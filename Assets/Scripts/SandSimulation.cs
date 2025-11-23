@@ -13,9 +13,9 @@ public class SandSimulation : MonoBehaviour
 
     [SerializeField] 
     private float stepInterval = 0.1f;
-    private float stepTimer = 0f;
 
     private int[,,] _mass;
+    private int[,,] _oldMass;
     private GameObject[,,] _voxels;
 
     private float _voxelScale;
@@ -24,22 +24,39 @@ public class SandSimulation : MonoBehaviour
     private PipeController _pipeController;
 
 
-    void Awake()
+    private void Awake()
     {
         _mass = new int[Size, Size, Size];
         _voxels = new GameObject[Size, Size, Size];
+        _oldMass = new int[Size, Size, Size];
+
         _voxelScale = 64f/Size;
         VoxelPrefab.transform.localScale = new Vector3(_voxelScale, _voxelScale, _voxelScale);
 
         SpawnVoxels();
+        TestStartSend();
+        RefreshVoxels();
 
+        StartCoroutine(SimLoop());
+    }
+    IEnumerator SimLoop()
+    {
+        while (true)
+        {
+            System.Buffer.BlockCopy(_mass, 0, _oldMass, 0, _mass.Length * sizeof(int));
+
+            Simulate();
+            RefreshVoxels();
+            yield return new WaitForSeconds(stepInterval);
+        }
+    }
+    private void TestStartSend()
+    {
         for (int y = 0; y < Size; y++)
             _mass[Size / 2, y, Size / 2] = 1;
-
-        RefreshVoxels();
     }
 
-    void SpawnVoxels()
+    private void SpawnVoxels()
     {
         for (int x = 0; x < Size; x++)
             for (int y = 0; y < Size; y++)
@@ -51,19 +68,7 @@ public class SandSimulation : MonoBehaviour
                 }
     }
 
-    void Update()
-    {
-        stepTimer += Time.deltaTime;
-
-        if (stepTimer >= stepInterval)
-        {
-            stepTimer = 0f;     
-            Simulate();        
-            RefreshVoxels();     
-        }
-    }
-
-    Vector3Int[] directions = new Vector3Int[]
+    private Vector3Int[] directions = new Vector3Int[]
                    {
                         new Vector3Int(-1, -1, 0),   
                         new Vector3Int(1, -1, 0),    
@@ -71,22 +76,22 @@ public class SandSimulation : MonoBehaviour
                         new Vector3Int(0, -1, 1),   
                    };
 
-    System.Random rng = new System.Random();
-    void Simulate()
+    private System.Random rng = new System.Random();
+    private void Simulate()
     {
-        int[,,] newMass = new int[Size, Size, Size];
 
-        for (int x = 0; x < Size; x++)
+        for (int y = 1; y < Size; y++)
         {
-            for (int y = 0; y < Size; y++)
+            for (int x = 0; x < Size; x++)
             {
                 for (int z = 0; z < Size; z++)
                 {
                     if (_mass[x, y, z] == 0) continue;
                     
                     if (IsEmpty(x, y - 1, z)) 
-                    { 
-                        newMass[x, y - 1, z] = 1; 
+                    {
+                        _mass[x, y, z] = 0;
+                        _mass[x, y - 1, z] = 1; 
                         continue; 
                     }
 
@@ -98,7 +103,6 @@ public class SandSimulation : MonoBehaviour
                         directions[j] = temp;
                     }
 
-                    bool moved = false;
                     foreach (var dir in directions)
                     {
                         int nx = x + dir.x;
@@ -107,38 +111,37 @@ public class SandSimulation : MonoBehaviour
 
                         if (IsEmpty(nx, ny, nz))
                         {
-                            newMass[nx, ny, nz] = 1;
-                            moved = true;
+                            _mass[x, y, z] = 0;
+                            _mass[nx, ny, nz] = 1;
                             break;
                         }
                     }
-
-                    if (!moved) newMass[x, y, z] = 1;
                 }
             }
         }
-
-        _mass = newMass;
         SimulatePour();
     }
 
-    bool IsEmpty(int x, int y, int z)
+    private bool IsEmpty(int x, int y, int z)
     {
         return x >= 0 && x < Size && y >= 0 && y < Size && z >= 0 && z < Size && _mass[x, y, z] == 0;
     }
 
-    void RefreshVoxels()
+    private void RefreshVoxels()
     {
         for (int x = 0; x < Size; x++)
             for (int y = 0; y < Size; y++)
                 for (int z = 0; z < Size; z++)
-                    _voxels[x, y, z].SetActive(_mass[x, y, z] > 0);
+                    if (_oldMass[x, y, z] != _mass[x, y, z])
+                        _voxels[x, y, z].SetActive(_mass[x, y, z] == 1);
     }
-    void SimulatePour()
+    private void SimulatePour()
     {
-        _mass[(int)(_pipeController.transform.position.x / _voxelScale + Size / 2),
-            (int)(_pipeController.transform.position.y / _voxelScale - 1f),
-            (int)(_pipeController.transform.position.z / _voxelScale + Size / 2)] = _pipeController.IsPours ? 1 : 0;
+        int px = (int)(_pipeController.transform.position.x / _voxelScale + Size / 2);
+        int py = (int)(_pipeController.transform.position.y / _voxelScale - 1f);
+        int pz = (int)(_pipeController.transform.position.z / _voxelScale + Size / 2);
+
+        if (_pipeController.IsPours) _mass[px,py,pz] = 1;
     }
 
 
