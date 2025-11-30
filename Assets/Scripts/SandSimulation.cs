@@ -1,4 +1,6 @@
+﻿using SandSimulation.HalpStruct;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SandSimulation
@@ -6,138 +8,109 @@ namespace SandSimulation
     [DefaultExecutionOrder(-100)]
     public class SandSimulation : MonoBehaviour
     {
-        [field: SerializeField] public int Size { get; private set; } = 64;
-        [field: SerializeField] public GameObject VoxelPrefab { get; private set; }
-        [SerializeField] private float stepInterval = 0.1f;
-        [SerializeField] private PipeController _pipeController;
+        [field: SerializeField]
+        public PipeController Pipe { get; private set; }
+        [field: SerializeField]
+        public int Size { get; private set; } = 64;
+        [field: SerializeField]
+        public float StepInterval { get; private set; } = 0.05f;
+        [field: SerializeField]
+        public Material VoxelMaterial { get; private set; }
 
-        private int[,,] _mass;
-        private int[,,] _oldMass;
-        private GameObject[,,] _voxels;
 
-        private float _voxelScale;
+
+        private Mesh voxelMesh;
+
+        private int[,,] _world;
+
+        private Matrix4x4[] matrices;
+        private List<Matrix4x4> visibleMatrices;
+
+        private ChunkSimulation _chunkSimulation;
+
+        public float VoxelScale { get; private set; }
+        private Vector3 offset;
 
 
         private void Awake()
         {
-            _mass = new int[Size, Size, Size];
-            _voxels = new GameObject[Size, Size, Size];
-            _oldMass = new int[Size, Size, Size];
+            var temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            voxelMesh = temp.GetComponent<MeshFilter>().sharedMesh;
+            Destroy(temp);
 
-            _voxelScale = 64f / Size;
-            VoxelPrefab.transform.localScale = new Vector3(_voxelScale, _voxelScale, _voxelScale);
+            _world = new int[Size, Size, Size];
 
-            SpawnVoxels();
-            TestStartSend();
-            RefreshVoxels();
+            matrices = new Matrix4x4[Size * Size * Size];
+            visibleMatrices = new List<Matrix4x4>(Size * Size * Size);
+
+            VoxelScale = 64f / Size;
+            offset = new Vector3(-Size / 2f, 0, -Size / 2f) * VoxelScale;
+
+            _chunkSimulation = new ChunkSimulation(_world, Size);
+            PrecomputeMatrices();
+            TestStartSand();
 
             StartCoroutine(SimLoop());
         }
-        IEnumerator SimLoop()
+
+        private void PrecomputeMatrices()
+        {
+            int index = 0;
+            for (int x = 0; x < Size; x++)
+                for (int y = 0; y < Size; y++)
+                    for (int z = 0; z < Size; z++)
+                    {
+                        Vector3 pos = new Vector3(x + 0.5f, y + 0.5f, z + 0.5f) * VoxelScale + offset;
+                        matrices[index] = Matrix4x4.TRS(pos, Quaternion.identity, Vector3.one * VoxelScale);
+                        index++;
+                    }
+        }
+
+        private void TestStartSand()
+        {
+            for (int y = 0; y < Size; y++)
+                _world[Size / 2, y, Size / 2] = 1;
+        }
+
+        private IEnumerator SimLoop()
         {
             while (true)
             {
-                System.Buffer.BlockCopy(_mass, 0, _oldMass, 0, _mass.Length * sizeof(int));
+                _chunkSimulation.Slip();
+                Pipe.SimulatePour(_world);
 
-                Simulate();
-                RefreshVoxels();
-                yield return new WaitForSeconds(stepInterval);
+                RefreshVisibleVoxels();
+
+                yield return new WaitForSeconds(StepInterval);
             }
         }
-        private void TestStartSend()
+
+        void Update()
         {
-            for (int y = 0; y < Size; y++)
-                _mass[Size / 2, y, Size / 2] = 1;
-        }
-
-        private void SpawnVoxels()
-        {
-            for (int x = 0; x < Size; x++)
-                for (int y = 0; y < Size; y++)
-                    for (int z = 0; z < Size; z++)
-                    {
-                        GameObject voxel = Instantiate(VoxelPrefab, new Vector3(-Size / 2 + x + 0.5f, y + 0.5f, -Size / 2 + z + 0.5f) * _voxelScale, Quaternion.identity, transform);
-                        voxel.SetActive(false);
-                        _voxels[x, y, z] = voxel;
-                    }
-        }
-
-        private Vector3Int[] directions = new Vector3Int[]
-                       {
-                        new Vector3Int(-1, -1, 0),
-                        new Vector3Int(1, -1, 0),
-                        new Vector3Int(0, -1, -1),
-                        new Vector3Int(0, -1, 1),
-                       };
-
-        private System.Random rng = new System.Random();
-        private void Simulate()
-        {
-
-            for (int y = 1; y < Size; y++)
+            int batchSize = 1023;
+            for (int i = 0; i < visibleMatrices.Count; i += batchSize)
             {
-                for (int x = 0; x < Size; x++)
-                {
-                    for (int z = 0; z < Size; z++)
-                    {
-                        if (_mass[x, y, z] == 0) continue;
-
-                        if (IsEmpty(x, y - 1, z))
-                        {
-                            _mass[x, y, z] = 0;
-                            _mass[x, y - 1, z] = 1;
-                            continue;
-                        }
-
-                        for (int i = directions.Length - 1; i > 0; i--)
-                        {
-                            int j = rng.Next(i + 1);
-                            var temp = directions[i];
-                            directions[i] = directions[j];
-                            directions[j] = temp;
-                        }
-
-                        foreach (var dir in directions)
-                        {
-                            int nx = x + dir.x;
-                            int ny = y + dir.y;
-                            int nz = z + dir.z;
-
-                            if (IsEmpty(nx, ny, nz))
-                            {
-                                _mass[x, y, z] = 0;
-                                _mass[nx, ny, nz] = 1;
-                                break;
-                            }
-                        }
-                    }
-                }
+                int count = Mathf.Min(batchSize, visibleMatrices.Count - i);
+                Graphics.DrawMeshInstanced(
+                    voxelMesh,
+                    0,
+                    VoxelMaterial,
+                    visibleMatrices.GetRange(i, count).ToArray());
             }
-            SimulatePour();
         }
 
-        private bool IsEmpty(int x, int y, int z)
+        private void RefreshVisibleVoxels()
         {
-            return x >= 0 && x < Size && y >= 0 && y < Size && z >= 0 && z < Size && _mass[x, y, z] == 0;
-        }
-
-        private void RefreshVoxels()
-        {
+            int index = 0;
+            visibleMatrices.Clear();
             for (int x = 0; x < Size; x++)
                 for (int y = 0; y < Size; y++)
                     for (int z = 0; z < Size; z++)
-                        if (_oldMass[x, y, z] != _mass[x, y, z])
-                            _voxels[x, y, z].SetActive(_mass[x, y, z] == 1);
+                    {
+                        if (_world[x, y, z] == 1)
+                            visibleMatrices.Add(matrices[index]);
+                        index++;
+                    }
         }
-        private void SimulatePour()
-        {
-            int px = (int)(_pipeController.transform.position.x / _voxelScale + Size / 2);
-            int py = (int)(_pipeController.transform.position.y / _voxelScale - 1f);
-            int pz = (int)(_pipeController.transform.position.z / _voxelScale + Size / 2);
-
-            if (_pipeController.IsPours) _mass[px, py, pz] = 1;
-        }
-
-
     }
 }

@@ -2,7 +2,7 @@
 {
     internal struct MoveCommand
     {
-        public int from;
-        public int to;
+        public Int3 from;
+        public Int3 to;
     }
 }
