@@ -26,7 +26,7 @@ namespace SandSimulation
         private Matrix4x4[] matrices;
         private List<Matrix4x4> visibleMatrices;
 
-        private ChunkSimulation _chunkSimulation;
+        private ChunkSimulationWrapper _chunkSimulation;
 
         public float VoxelScale { get; private set; }
         private Vector3 offset;
@@ -46,9 +46,10 @@ namespace SandSimulation
             VoxelScale = 64f / Size;
             offset = new Vector3(-Size / 2f, 0, -Size / 2f) * VoxelScale;
 
-            _chunkSimulation = new ChunkSimulation(_world, Size);
+
             PrecomputeMatrices();
             TestStartSand();
+            _chunkSimulation = new(_world, Size);
 
             StartCoroutine(SimLoop());
         }
@@ -111,6 +112,10 @@ namespace SandSimulation
                             visibleMatrices.Add(matrices[index]);
                         index++;
                     }
+        }
+        private void OnDestroy()
+        {
+            _chunkSimulation?.Dispose();
         }
     }
 }

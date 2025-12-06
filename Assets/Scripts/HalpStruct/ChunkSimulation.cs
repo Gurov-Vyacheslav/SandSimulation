@@ -13,14 +13,17 @@ namespace SandSimulation.HalpStruct
     {
         private int[,,] _world;
 
-        private readonly Int3[] directionsArr = new Int3[]
+        private readonly Int3[] _baseDirections = new Int3[]
         {
-            new Int3(0, -1, 0),    // вниз
-            new Int3(-1, -1, 0),   // влево вниз
-            new Int3(1, -1, 0),    // вправо вниз
-            new Int3(0, -1, -1),   // назад вниз
-            new Int3(0, -1, 1)     // вперед вниз
+            new (0, -1, 0),    // вниз
+            new (-1, -1, 0),   // влево вниз
+            new (1, -1, 0),    // вправо вниз
+            new (0, -1, -1),   // назад вниз
+            new (0, -1, 1)     // вперед вниз
         };
+
+        // Массивы направлений для каждого потока
+        private Int3[][] _threadDirections;
 
         private readonly int _size;
         private readonly int _chunkLength;
@@ -37,6 +40,20 @@ namespace SandSimulation.HalpStruct
             _size = size;
             _chunkLength = size * size * size / _chunkCount;
             _moveQueue = new ConcurrentQueue<MoveCommand>();
+
+            InitializeThreadDirections();
+        }
+
+        private void InitializeThreadDirections()
+        {
+            _threadDirections = new Int3[_chunkCount][];
+
+            for (int i = 0; i < _chunkCount; i++)
+            {
+                // Создаем копию базовых направлений для каждого потока
+                _threadDirections[i] = new Int3[_baseDirections.Length];
+                Array.Copy(_baseDirections, _threadDirections[i], _baseDirections.Length);
+            }
         }
 
         public void Slip()
@@ -56,7 +73,7 @@ namespace SandSimulation.HalpStruct
             {
                 thread.Join();
             }
-            ApplyMoveQueueToWorld();
+            //ApplyMoveQueueToWorld();
 
         }
 
@@ -66,38 +83,29 @@ namespace SandSimulation.HalpStruct
             int endIndex = Math.Min(startIndex + _chunkLength, _size * _size * _size);
             int x = 0, y = 0, z = 0;
 
+            Int3[] directions = _threadDirections[chunkIndex];
+
             for (int i = startIndex; i < endIndex; i++)
             {
                 ToXYZ(i, ref x, ref y, ref z);
                 if (_world[x,y,z] == 0) continue;
 
-                Shuffle(directionsArr);
+                Shuffle(directions);
 
-                for (int di = 0; di < directionsArr.Length; di++)
+                for (int di = 0; di < directions.Length; di++)
                 {
-                    Int3 d = directionsArr[di];
+                    Int3 d = directions[di];
                     int nx = x + d.x;
                     int ny = y + d.y;
                     int nz = z + d.z;
 
                     if (!IsInBounds(nx, ny, nz)) continue;
 
-                    if (BelongsToChunk(ToIndex(nx,ny,nz), startIndex, endIndex))
+                    if (_world[nx, ny, nz] == 0)
                     {
-                        if (_world[nx,ny,nz] == 0)
-                        {
-                            _world[nx, ny, nz] = 1;
-                            _world[x, y, z] = 0;
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        if (_world[nx, ny, nz] == 0)
-                        {
-                            _moveQueue.Enqueue(new MoveCommand { from = new(x,y,z), to = new(nx, ny, nz) });
-                            break;
-                        }
+                        _world[nx, ny, nz] = 1;
+                        _world[x, y, z] = 0;
+                        break;
                     }
                 }
                     
@@ -138,10 +146,8 @@ namespace SandSimulation.HalpStruct
 
             while (_moveQueue.TryDequeue(out MoveCommand cmd))
             {
-                Debug.Log("<");
                 if (_world[cmd.to.x, cmd.to.y, cmd.to.z] == 0)
                 {
-                    Debug.Log(":");
                     _world[cmd.to.x, cmd.to.y, cmd.to.z] = 1;
                     _world[cmd.from.x, cmd.from.y, cmd.from.z] = 0;
                 }
