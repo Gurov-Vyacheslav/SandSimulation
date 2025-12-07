@@ -1,15 +1,11 @@
-﻿using System;
-using System.Drawing;
-using System.Threading;
-using Unity.Burst;
+﻿using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
 
 namespace SandSimulation.HalpStruct
 {
-    //[BurstCompile]
+    [BurstCompile]
     internal struct SandSimulationJob : IJobParallelFor
     {
         [ReadOnly] public int Size;
@@ -18,98 +14,117 @@ namespace SandSimulation.HalpStruct
         public NativeArray<int> World;
 
         public uint seed;
-        public NativeArray<int> seted;
+
+        // Тонкая настройка поведения
+        const int MaxPressureScanHeight = 8;     // насколько далеко вверх смотреть столб
+        const int PressureThreshold = 5;     // сколько песка сверху нужно для "давления"
+        const float PressureSideSlideChance = 0.4f;  // шанс бокового сдвига под 
 
         public void Execute(int index)
         {
-            // Преобразуем линейный индекс в координаты
-            int y = index / (Size * Size);
-            int z = (index / Size) % Size;
-            int x = index % Size;
+            Translator.ToXYZ(index, Size, out int x, out int y, out int z);
 
-            Unity.Mathematics.Random random = new(seed + (uint)index * 1000);
+            if (World[index] == 0 || y == 0)
+                return;
 
-            seted[index] = 1;
-            if (World[index] == 0 || y == 0) return;
+            uint randomSeed = seed + (uint)index + 1u;
+            if (randomSeed == 0) randomSeed = 1;
+            Random random = new Random(randomSeed);
 
-            // Проверяем все возможные направления падения
-            int3[] directions = new int3[]
+            if (TryMove(x, y, z, 0, -1, 0, index))
+                return;
+
+            int start = random.NextInt(0, 4);
+
+            for (int k = 0; k < 4; k++)
             {
-                new (0, -1, 0),    // вниз
-                new (-1, -1, 0),   // вниз-влево
-                new (1, -1, 0),    // вниз-вправо
-                new (0, -1, -1),   // вниз-назад
-                new (0, -1, 1)     // вниз-вперед
-            };
+                int dir = (start + k) & 3; // dir = 0..3 по кругу
+                int dx = 0, dz = 0;
 
-            // Перемешиваем направления
-            for (int i = directions.Length - 1; i > 1; i--)
-            {
-                int j = random.NextInt(1, i + 1);
-                (directions[i], directions[j]) = (directions[j], directions[i]);
-            }
-
-            // Пытаемся найти свободное место для падения
-            foreach (var dir in directions)
-            {
-                int nx = x + dir.x;
-                int ny = y + dir.y;
-                int nz = z + dir.z;
-
-                if (nx < 0 || nx >= Size || ny < 0 || ny >= Size || nz < 0 || nz >= Size)
-                    continue;
-
-                int newIndex = nx + nz * Size + ny * Size * Size;
-
-                if (World[newIndex] == 0)
+                switch (dir)
                 {
-                    World[index] = 0;
-                    World[newIndex] = 1;
-                    return;
+                    case 0: dx = -1; break;
+                    case 1: dx = 1; break;
+                    case 2: dz = -1; break;
+                    case 3: dz = 1; break;
                 }
+
+                if (TryMove(x, y, z, dx, -1, dz, index))
+                    return;
             }
+
+            // 4. Давление сверху: считаем высоту столба песка над текущей клеткой
+            if (random.NextFloat() > PressureSideSlideChance) return;
+            
+            int pressureHeight = 0;
+            int maxYScan = math.min(Size, y + 1 + MaxPressureScanHeight);
+
+            for (int yy = y + 1; yy < maxYScan; yy++)
+            {
+                int aboveIdx = Translator.ToIndex(x, yy, z, Size);
+                if (World[aboveIdx] != 0)
+                    pressureHeight++;
+                else
+                    break;
+            }
+
+            if (pressureHeight >= PressureThreshold)
+            {
+                // 4 возможных направления по горизонтали
+                int dirH = random.NextInt(0, 4);
+                int hdx = 0, hdz = 0;
+
+                switch (dirH)
+                {
+                    case 0: hdx = -1; break;
+                    case 1: hdx = 1; break;
+                    case 2: hdz = -1; break;
+                    case 3: hdz = 1; break;
+                }
+
+                // Горизонтальный шаг, чтобы песок мог "ползти" с перегруженного места
+                if (TryMove(x, y, z, hdx, 0, hdz, index))
+                    return;
+            }
+        }
+
+        private bool TryMove(int x, int y, int z, int dx, int dy, int dz, int index)
+        {
+            int nx = x + dx;
+            int ny = y + dy;
+            int nz = z + dz;
+
+            if (nx < 0 || ny < 0 || nz < 0 || nx >= Size || ny >= Size || nz >= Size)
+                return false;
+
+            int newIndex = Translator.ToIndex(nx, ny, nz, Size);
+
+            if (World[newIndex] != 0)
+                return false;
+
+            World[index] = 0;
+            World[newIndex] = 1;
+            return true;
         }
     }
 
     internal class ChunkSimulationWrapper
     {
         private int _size;
-        private int[,,] _world;
-        private NativeArray<int> _buffer;
-        private NativeArray<int> _seted;
+        private NativeArray<int> _world;
 
-        public ChunkSimulationWrapper(int[,,] world, int size)
+        public ChunkSimulationWrapper(NativeArray<int> world, int size)
         {
             _size = size;
             _world = world;
-
-            int totalSize = size * size * size;
-            _buffer = new NativeArray<int>(totalSize, Allocator.Persistent);
-            _seted = new NativeArray<int>(totalSize, Allocator.Persistent);
-            UpdateNativeArraysFromWorld();
-
-            int count = 0;
-            foreach (var item in _buffer)
-            {
-                count += item;
-            }
-            Debug.Log(count);
-            for (int x = 0; x < _size; x++)
-                for (int y = 0; y < _size; y++)
-                    for (int z = 0; z < _size; z++)
-                        count += world[x, y, z];
-            Debug.Log(count);
         }
 
         public void Slip()
         {
-            UpdateNativeArraysFromWorld();
-
             var job = new SandSimulationJob
             {
-                seted = _seted,
                 Size = _size,
-                World = _buffer,
+                World = _world,
                 seed = (uint)UnityEngine.Random.Range(1, 1000000)
             };
 
@@ -117,37 +132,7 @@ namespace SandSimulation.HalpStruct
             JobHandle handle = job.Schedule(totalVoxels, totalVoxels/8);
 
             handle.Complete();
-
-            
-
-            UpdateWorldFromNativeArray();
         }
-        private void UpdateNativeArraysFromWorld()
-        {
-            for (int x = 0; x < _size; x++)
-                for (int y = 0; y < _size; y++)
-                    for (int z = 0; z < _size; z++)
-                    {
-                        int index = x + z * _size + y * _size * _size;
-                        int value = _world[x, y, z];
-                        _buffer[index] = value;;
-                    }
-        }
-
-        private void UpdateWorldFromNativeArray()
-        {
-            for (int x = 0; x < _size; x++)
-                for (int y = 0; y < _size; y++)
-                    for (int z = 0; z < _size; z++)
-                    {
-                        int index = x + z * _size + y * _size * _size;
-                        _world[x, y, z] = _buffer[index];
-                    }
-        }
-
-        public void Dispose()
-        {
-            if (_buffer.IsCreated) _buffer.Dispose();
-        }
+  
     }
 }

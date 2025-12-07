@@ -1,6 +1,7 @@
 ﻿using SandSimulation.HalpStruct;
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Collections;
 using UnityEngine;
 
 namespace SandSimulation
@@ -21,7 +22,7 @@ namespace SandSimulation
 
         private Mesh voxelMesh;
 
-        private int[,,] _world;
+        private NativeArray<int> _worldData;
 
         private Matrix4x4[] matrices;
         private List<Matrix4x4> visibleMatrices;
@@ -31,14 +32,20 @@ namespace SandSimulation
         public float VoxelScale { get; private set; }
         private Vector3 offset;
 
-
         private void Awake()
         {
             var temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
             voxelMesh = temp.GetComponent<MeshFilter>().sharedMesh;
             Destroy(temp);
 
-            _world = new int[Size, Size, Size];
+
+            int totalSize = Size * Size * Size;
+            _worldData = new NativeArray<int>(totalSize, Allocator.Persistent);
+            for (int i = 0; i < totalSize; i++)
+            {
+                _worldData[i] = 0; 
+            }
+
 
             matrices = new Matrix4x4[Size * Size * Size];
             visibleMatrices = new List<Matrix4x4>(Size * Size * Size);
@@ -49,7 +56,7 @@ namespace SandSimulation
 
             PrecomputeMatrices();
             TestStartSand();
-            _chunkSimulation = new(_world, Size);
+            _chunkSimulation = new ChunkSimulationWrapper(_worldData, Size);
 
             StartCoroutine(SimLoop());
         }
@@ -69,16 +76,29 @@ namespace SandSimulation
 
         private void TestStartSand()
         {
+            int centerX = Size / 2;
+            int centerZ = Size / 2;
             for (int y = 0; y < Size; y++)
-                _world[Size / 2, y, Size / 2] = 1;
+            {
+                _worldData[Translator.ToIndex(centerX, y, centerZ, Size)] = 1;
+            }
         }
 
         private IEnumerator SimLoop()
         {
             while (true)
             {
+                if (Input.GetKey(KeyCode.Q))
+                {
+                    for (int i = 0; i < Size*Size*Size; i++)
+                    {
+                        _worldData[i] = 0;
+                    }
+                }
+
                 _chunkSimulation.Slip();
-                Pipe.SimulatePour(_world);
+
+                Pipe.SimulatePour(_worldData);
 
                 RefreshVisibleVoxels();
 
@@ -108,14 +128,14 @@ namespace SandSimulation
                 for (int y = 0; y < Size; y++)
                     for (int z = 0; z < Size; z++)
                     {
-                        if (_world[x, y, z] == 1)
+                        if (_worldData[Translator.ToIndex(x,y,z,Size)] == 1)
                             visibleMatrices.Add(matrices[index]);
                         index++;
                     }
         }
         private void OnDestroy()
         {
-            _chunkSimulation?.Dispose();
+            if (_worldData.IsCreated) _worldData.Dispose();
         }
     }
 }

@@ -1,6 +1,6 @@
-using System.Drawing;
+using Unity.Collections;
 using UnityEngine;
-
+using SandSimulation.HalpStruct;
 
 namespace SandSimulation
 {
@@ -13,11 +13,15 @@ namespace SandSimulation
         public float MoveSpeed { get; private set; } = 5f;
 
         private float _sizeSpace;
+
+        private int _maxPourRadius;
+        private int _lastPourRadius = 2;
         private void Start()
         {
-            //_sizeSpace = SandSimulation.VoxelPrefab.transform.localScale.y * SandSimulation.Size;
-            _sizeSpace = 10f;
-            transform.position = new Vector3(0, _sizeSpace + 0.5f, 0);
+            _sizeSpace = 60f;
+            transform.position = new Vector3(0, _sizeSpace/2 + 0.5f, 0);
+
+            _maxPourRadius = Mathf.Max(Mathf.RoundToInt(1 / SandSimulation.VoxelScale) - 1, 0) * 4;
         }
 
 
@@ -48,19 +52,30 @@ namespace SandSimulation
             }
         }
 
-        public void SimulatePour(int[,,] mass)
+        public void SimulatePour(NativeArray<int> mass)
         {
-            if (!IsPours) return;
+            int pourRadius;
+       
+            if (IsPours)
+            {
+                pourRadius = Mathf.Min(_maxPourRadius, _lastPourRadius + 1);
+            } else
+            {
+                if (_lastPourRadius <= 2) return;
+                pourRadius = _lastPourRadius - 1;
+            }
+            _lastPourRadius = pourRadius;
+
 
             int px = Mathf.FloorToInt(transform.position.x / SandSimulation.VoxelScale + SandSimulation.Size / 2f);
             int py = Mathf.FloorToInt(transform.position.y / SandSimulation.VoxelScale - 1f);
             int pz = Mathf.FloorToInt(transform.position.z / SandSimulation.VoxelScale + SandSimulation.Size / 2f);
 
 
-            int pourRadius = Mathf.Max(Mathf.RoundToInt(1 / SandSimulation.VoxelScale) - 1, 0);
-            int radiusSqr = pourRadius * pourRadius;
+            float radiusSqr = pourRadius * pourRadius;
 
             int particlesPerFrame = 2 * pourRadius * (1 + pourRadius) + 1;
+            particlesPerFrame *= 2;
 
             for (int i = 0; i < particlesPerFrame; i++)
             {
@@ -76,7 +91,7 @@ namespace SandSimulation
                 {
                     if (x >= 0 && x < SandSimulation.Size && py >= 0 && py < SandSimulation.Size && z >= 0 && z < SandSimulation.Size)
                     {
-                        mass[x, py, z] = 1;
+                        mass[Translator.ToIndex(x, py, z, SandSimulation.Size)] = 1;
                     }
 
                 }
