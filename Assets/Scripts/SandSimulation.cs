@@ -14,7 +14,7 @@ namespace SandSimulation
         [field: SerializeField]
         public int Size { get; private set; } = 64;
         [field: SerializeField]
-        public float StepInterval { get; private set; } = 0.05f;
+        public float StepInterval { get; private set; } = 0f;
         [field: SerializeField]
         public Material VoxelMaterial { get; private set; }
 
@@ -55,7 +55,7 @@ namespace SandSimulation
 
 
             PrecomputeMatrices();
-            TestStartSand();
+
             _chunkSimulation = new ChunkSimulationWrapper(_worldData, Size);
 
             StartCoroutine(SimLoop());
@@ -74,27 +74,11 @@ namespace SandSimulation
                     }
         }
 
-        private void TestStartSand()
-        {
-            int centerX = Size / 2;
-            int centerZ = Size / 2;
-            for (int y = 0; y < Size; y++)
-            {
-                _worldData[Translator.ToIndex(centerX, y, centerZ, Size)] = 1;
-            }
-        }
-
         private IEnumerator SimLoop()
         {
             while (true)
             {
-                if (Input.GetKey(KeyCode.Q))
-                {
-                    for (int i = 0; i < Size*Size*Size; i++)
-                    {
-                        _worldData[i] = 0;
-                    }
-                }
+                CheckAllDelete();
 
                 _chunkSimulation.Slip();
 
@@ -103,6 +87,17 @@ namespace SandSimulation
                 RefreshVisibleVoxels();
 
                 yield return new WaitForSeconds(StepInterval);
+            }
+        }
+
+        private void CheckAllDelete()
+        {
+            if (Input.GetKey(KeyCode.Q))
+            {
+                for (int i = 0; i < Size * Size * Size; i++)
+                {
+                    _worldData[i] = 0;
+                }
             }
         }
 

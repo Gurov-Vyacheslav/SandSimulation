@@ -12,16 +12,19 @@ namespace SandSimulation
         [field: SerializeField]
         public float MoveSpeed { get; private set; } = 5f;
 
-        private float _sizeSpace;
+        [field: SerializeField]
+        public int SizePourRadius { get; private set; } = 4;
+        [field: SerializeField]
+        public float SizeSpaceMovement { get; private set; } = 60f;
 
         private int _maxPourRadius;
         private int _lastPourRadius = 2;
+
         private void Start()
         {
-            _sizeSpace = 60f;
-            transform.position = new Vector3(0, _sizeSpace/2 + 0.5f, 0);
+            transform.position = new Vector3(0, SizeSpaceMovement/2, 0);
 
-            _maxPourRadius = Mathf.Max(Mathf.RoundToInt(1 / SandSimulation.VoxelScale) - 1, 0) * 4;
+            _maxPourRadius = Mathf.Max(Mathf.RoundToInt(1 / SandSimulation.VoxelScale) - 1, 0) * SizePourRadius;
         }
 
 
@@ -40,8 +43,8 @@ namespace SandSimulation
 
         private bool IsPositionValid(Vector3 position)
         {
-            return position.x >= -_sizeSpace / 2 && position.x <= _sizeSpace / 2 &&
-                   position.z >= -_sizeSpace / 2 && position.z <= _sizeSpace / 2;
+            return position.x >= -SizeSpaceMovement / 2 && position.x <= SizeSpaceMovement / 2 &&
+                   position.z >= -SizeSpaceMovement / 2 && position.z <= SizeSpaceMovement / 2;
         }
 
         public bool IsPours
