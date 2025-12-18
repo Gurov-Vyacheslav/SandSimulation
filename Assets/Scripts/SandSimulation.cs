@@ -76,15 +76,39 @@ namespace SandSimulation
 
         private IEnumerator SimLoop()
         {
+            int frameCount = 0;
+            float elapsedTime = 0f;
+            float lastLogTime = 0f;
+            const float LOG_INTERVAL = 5f; // Логировать каждые 5 секунд
+
             while (true)
             {
+                // Замер времени начала симуляции
+                System.DateTime startTime = System.DateTime.Now;
+
                 CheckAllDelete();
-
                 _chunkSimulation.Slip();
-
                 Pipe.SimulatePour(_worldData);
-
                 RefreshVisibleVoxels();
+
+                // Время выполнения симуляции
+                System.TimeSpan simDuration = System.DateTime.Now - startTime;
+
+                // Счетчик FPS
+                frameCount++;
+                elapsedTime += Time.unscaledDeltaTime;
+
+                // Логирование
+                if (elapsedTime - lastLogTime >= LOG_INTERVAL)
+                {
+                    float fps = frameCount / LOG_INTERVAL;
+
+                    Debug.Log($"=== Sand Simulation Performance ===\n" +
+                             $"FPS: {fps:F1}\n");
+
+                    frameCount = 0;
+                    lastLogTime = elapsedTime;
+                }
 
                 yield return new WaitForSeconds(StepInterval);
             }
