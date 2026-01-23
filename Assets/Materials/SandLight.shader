@@ -87,7 +87,9 @@ Shader "Custom/SandLight"
                 
                 for (int i = 0; i < 3; i++)
                 {
-                    total += sin(p.x * frequency * 0.7 + p.y * frequency * 1.3 + p.z * frequency * 0.9) * amplitude;
+                    total += sin(p.x * frequency * 0.7 + 
+                        p.y * frequency * 1.3 + 
+                        p.z * frequency * 0.9) * amplitude;
                     maxAmplitude += amplitude;
                     amplitude *= 0.5;
                     frequency *= 2.0;

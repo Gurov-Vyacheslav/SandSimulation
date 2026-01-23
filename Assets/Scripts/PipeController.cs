@@ -69,11 +69,12 @@ namespace SandSimulation
             }
             _lastPourRadius = pourRadius;
 
-
-            int px = Mathf.FloorToInt(transform.position.x / SandSimulation.VoxelScale + SandSimulation.Size / 2f);
-            int py = Mathf.FloorToInt(transform.position.y / SandSimulation.VoxelScale - 1f);
-            int pz = Mathf.FloorToInt(transform.position.z / SandSimulation.VoxelScale + SandSimulation.Size / 2f);
-
+            int px = Mathf.FloorToInt(transform.position.x / 
+                SandSimulation.VoxelScale + SandSimulation.Size / 2f);
+            int py = Mathf.FloorToInt(transform.position.y / 
+                SandSimulation.VoxelScale - 1f);
+            int pz = Mathf.FloorToInt(transform.position.z / 
+                SandSimulation.VoxelScale + SandSimulation.Size / 2f);
 
             float radiusSqr = pourRadius * pourRadius;
 
@@ -92,7 +93,9 @@ namespace SandSimulation
                 int dz = z - pz;
                 if (dx * dx + dz * dz <= radiusSqr)
                 {
-                    if (x >= 0 && x < SandSimulation.Size && py >= 0 && py < SandSimulation.Size && z >= 0 && z < SandSimulation.Size)
+                    if (x >= 0 && x < SandSimulation.Size && 
+                        py >= 0 && py < SandSimulation.Size && 
+                        z >= 0 && z < SandSimulation.Size)
                     {
                         mass[Translator.ToIndex(x, py, z, SandSimulation.Size)] = 1;
                     }

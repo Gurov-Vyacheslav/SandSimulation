@@ -23,30 +23,29 @@ namespace SandSimulation.HalpStruct
         {
             Translator.ToXYZ(index, Size, out int x, out int y, out int z);
 
-            if (World[index] == 0 || y == 0)
-                return;
+            if (World[index] == 0 || y == 0) return;
 
             uint randomSeed = seed + (uint)index + 1u;
             if (randomSeed == 0) randomSeed = 1;
             Random random = new Random(randomSeed);
 
-            if (TryMove(x, y, z, 0, -1, 0, index))
-                return;
+            // Попытка движeния вниз
+            if (TryMove(x, y, z, 0, -1, 0, index)) return;
 
+            // Расчeт давлeния
             int pressureHeight = CountSandAbove(x, y, z);
 
-            if (random.NextInt(0, PressureThreshold + 2) > pressureHeight)
-                return;
+            if (random.NextInt(0, PressureThreshold + 2) > pressureHeight) return;
 
+            // Попытка диагонального движeния
             int start = random.NextInt(0, 4);
-
             if (TryMoveDiagonally(start, x, y, z, index)) return;
-
+            
+            // Боковоe скольжeниe
             if (random.NextFloat() < ProbabilitySlip)
-            {
                 TrySlip(start, x, y, z, index);
-            }
         }
+
         private bool TryMoveDiagonally(int start, int x, int y, int z, int index)
         {
             for (int k = 0; k < 4; k++)
@@ -89,13 +88,15 @@ namespace SandSimulation.HalpStruct
         }
 
 
-        private bool TryMove(int x, int y, int z, int dx, int dy, int dz, int index)
+        private bool TryMove(int x, int y, int z, int dx, int dy, int dz, 
+            int index)
         {
             int nx = x + dx;
             int ny = y + dy;
             int nz = z + dz;
 
-            if (nx < 0 || ny < 0 || nz < 0 || nx >= Size || ny >= Size || nz >= Size)
+            if (nx < 0 || ny < 0 || nz < 0 || 
+                nx >= Size || ny >= Size || nz >= Size)
                 return false;
 
             int newIndex = Translator.ToIndex(nx, ny, nz, Size);
